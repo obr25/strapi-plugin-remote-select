@@ -13,11 +13,9 @@ export interface FlexibleSelectFetchConfig {
 
 export interface FlexibleSelectMappingConfig {
   sourceJsonPath: string;
-  labelJsonPath: string;
   valueJsonPath: string;
 }
 
 export interface FlexibleSelectSelectConfig {
-  multi: boolean;
-  metadataSlug?: boolean;
+  // No configuration needed - multi mode is determined by field type
 }

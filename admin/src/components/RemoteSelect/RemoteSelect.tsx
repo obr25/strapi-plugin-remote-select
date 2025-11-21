@@ -4,13 +4,16 @@ import {
   MultiSelectOption,
   SingleSelect,
   SingleSelectOption,
+  DesignSystemProvider,
+  useDesignSystem,
 } from '@strapi/design-system';
 import { useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
+import { useTheme } from 'styled-components';
 import { FlexibleSelectConfig } from '../../../../types/FlexibleSelectConfig';
 import { SearchableRemoteSelectValue } from '../../../../types/SearchableRemoteSelectValue';
 
-export default function RemoteSelect({
+function RemoteSelectComponent({
   value,
   onChange,
   name,
@@ -30,28 +33,29 @@ export default function RemoteSelect({
 
   const { formatMessage } = useIntl();
   const isMulti = useMemo<boolean>(
-    () => !!selectConfiguration.select?.multi,
-    [selectConfiguration]
+    () => attribute.customField === 'plugin::remote-select.remote-select-multi',
+    [attribute]
   );
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [options, setOptions] = useState<Array<SearchableRemoteSelectValue>>([]);
   const [optionsLoadingError, setLoadingError] = useState<any | undefined>();
 
   const valueParsed = useMemo<string | string[]>(() => {
-    if (isMulti) {
-      if (!value) {
-        return [];
-      }
-
-      try {
-        return JSON.parse(value);
-      } catch (err) {
-        return [value];
-      }
+    if (!value) {
+      return isMulti ? [] : '';
     }
 
-    return value;
-  }, [value]);
+    if (isMulti) {
+      // Multi mode: type 'json' returns actual array
+      if (!Array.isArray(value)) {
+        return [];
+      }
+      return value;
+    }
+
+    // Single mode: type 'text' returns plain string
+    return typeof value === 'string' ? value : '';
+  }, [value, isMulti]);
 
   useEffect(() => {
     loadOptions();
@@ -84,14 +88,20 @@ export default function RemoteSelect({
   }
 
   function handleChange(value?: string | string[]) {
+    let finalValue: any;
+
     if (isMulti) {
-      value = Array.isArray(value) ? value : [];
-      value = value.filter((el) => el !== undefined && el !== null);
-      value = (value as string[]).length ? JSON.stringify(value) : undefined;
+      // Multi mode: type 'json' stores actual array (no stringify)
+      const arrayValue = Array.isArray(value) ? value : [];
+      const filtered = arrayValue.filter((el) => el !== undefined && el !== null);
+      finalValue = filtered.length ? filtered : (required ? undefined : []);
+    } else {
+      // Single mode: type 'text' stores plain string
+      finalValue = value ? String(value) : (required ? undefined : null);
     }
 
     onChange({
-      target: { name, type: attribute.type, value: value },
+      target: { name, type: attribute.type, value: finalValue },
     });
   }
 
@@ -138,5 +148,16 @@ export default function RemoteSelect({
       <Field.Error />
       <Field.Hint />
     </Field.Root>
+  );
+}
+
+export default function RemoteSelect(props: any) {
+  const theme = useTheme();
+  const designSystem = useDesignSystem('RemoteSelect');
+
+  return (
+    <DesignSystemProvider locale={designSystem?.locale || 'en'} theme={theme}>
+      <RemoteSelectComponent {...props} />
+    </DesignSystemProvider>
   );
 }

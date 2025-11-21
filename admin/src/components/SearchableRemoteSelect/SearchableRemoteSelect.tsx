@@ -1,12 +1,13 @@
-import { Checkbox, Combobox, ComboboxOption, Field, Flex, Tag } from '@strapi/design-system';
+import { Checkbox, Combobox, ComboboxOption, Field, Flex, Tag, DesignSystemProvider, useDesignSystem } from '@strapi/design-system';
 import { Cross } from '@strapi/icons';
 import { debounce } from 'lodash-es';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
+import { useTheme } from 'styled-components';
 import { FlexibleSelectConfig } from '../../../../types/FlexibleSelectConfig';
 import { SearchableRemoteSelectValue } from '../../../../types/SearchableRemoteSelectValue';
 
-export default function SearchableRemoteSelect(attrs: any) {
+function SearchableRemoteSelectComponent(attrs: any) {
   const { name, error, hint, onChange, value, label, attribute, required } = attrs;
 
   const selectConfiguration: FlexibleSelectConfig = attribute.options;
@@ -17,52 +18,39 @@ export default function SearchableRemoteSelect(attrs: any) {
   const [loadingError, setLoadingError] = useState<any>(undefined);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const isMulti = useMemo<boolean>(
-    () => !!selectConfiguration.select?.multi,
-    [selectConfiguration]
-  );
-  const useMetadataSlug = useMemo<boolean>(
-    () => !!selectConfiguration.select?.metadataSlug && !isMulti,
-    [selectConfiguration, isMulti]
+    () => attribute.customField === 'plugin::remote-select.searchable-remote-select-multi',
+    [attribute]
   );
   const valueParsed = useMemo<
     SearchableRemoteSelectValue | SearchableRemoteSelectValue[] | undefined
   >(() => {
-    if (isMulti) {
-      if (!value || value === 'null') {
-        return [];
-      }
-
-      try {
-        const parseResult = JSON.parse(value);
-        return Array.isArray(parseResult) ? parseResult : [parseResult];
-      } catch (err) {
-        return [];
-      }
-    } else {
-      if (!value) {
-        return undefined;
-      }
-
-      // Handle metadata slug mode (string value)
-      if (useMetadataSlug && typeof value === 'string') {
-        try {
-          // Check if it's actually JSON - if not, treat as string value
-          JSON.parse(value);
-        } catch (err) {
-          // It's a plain string, create a SearchableRemoteSelectValue
-          return { value, label: value };
-        }
-      }
-
-      try {
-        const parseResult = JSON.parse(value);
-        const option = Array.isArray(parseResult) ? parseResult[0] : parseResult;
-        return !Object.keys(option).length ? undefined : option;
-      } catch (err) {
-        return undefined;
-      }
+    if (!value) {
+      return isMulti ? [] : undefined;
     }
-  }, [value, useMetadataSlug]);
+
+    if (isMulti) {
+      // Multi mode: type 'json' returns actual array
+      if (!Array.isArray(value)) {
+        return [];
+      }
+
+      // Convert array of strings to display objects
+      return value.map(val => ({
+        value: String(val).trim(),
+        label: String(val).trim()
+      }));
+    } else {
+      // Single mode: type 'text' returns plain string
+      if (typeof value !== 'string') {
+        return undefined;
+      }
+
+      return {
+        value: value.trim(),
+        label: value.trim()
+      };
+    }
+  }, [value, isMulti]);
   const [searchModel, setSearchModel] = useState<string>(
     valueParsed && isSingleParsed(valueParsed) ? valueParsed.label : ''
   );
@@ -138,8 +126,7 @@ export default function SearchableRemoteSelect(attrs: any) {
   function handleTextValueChange(val: string): void {
     setSearchModel(val);
     if (valueParsed && isSingleParsed(valueParsed)) {
-      const currentLabel = useMetadataSlug && typeof value === 'string' ? value : valueParsed.label;
-      if (currentLabel !== val) {
+      if (valueParsed.label !== val) {
         handleChange(undefined);
       }
     }
@@ -166,41 +153,42 @@ export default function SearchableRemoteSelect(attrs: any) {
   }
 
   function isInModel(option: SearchableRemoteSelectValue): boolean {
-    return (
-      !!valueParsed &&
-      isMultiParsed(valueParsed) &&
-      valueParsed.some((o) => o.value === option.value)
-    );
+    if (!valueParsed || !isMultiParsed(valueParsed)) {
+      return false;
+    }
+
+    // Normalize both values for comparison
+    const optionValue = String(option.value).trim();
+    return valueParsed.some((o) => String(o.value).trim() === optionValue);
   }
 
   function removeFromModel(option: SearchableRemoteSelectValue): void {
     if (!!valueParsed && isMultiParsed(valueParsed)) {
-      writeMultiModel(valueParsed.filter((o) => o.value !== option.value));
+      const optionValue = String(option.value).trim();
+      writeMultiModel(valueParsed.filter((o) => String(o.value).trim() !== optionValue));
     }
   }
 
   function writeMultiModel(value?: SearchableRemoteSelectValue[]): void {
+    // For type: 'json', store actual array (no stringify)
+    const valuesArray = value ? value.map(v => String(v.value).trim()) : [];
+    const finalValue = valuesArray.length
+      ? valuesArray
+      : required ? undefined : [];
+
     onChange({
       target: {
         name,
         type: attribute.type,
-        value:
-          value && value.length ? JSON.stringify(value) : required ? undefined : JSON.stringify([]),
+        value: finalValue,
       },
     });
   }
 
   function writeSingleModel(value?: SearchableRemoteSelectValue): void {
-    let finalValue: string | undefined;
-    
-    if (!value) {
-      finalValue = required ? undefined : (useMetadataSlug ? '' : JSON.stringify({}));
-    } else if (useMetadataSlug) {
-      finalValue = value.value;
-    } else {
-      finalValue = JSON.stringify(value);
-    }
-    
+    // For type: 'text', store plain string
+    const finalValue = value ? String(value.value).trim() : (required ? undefined : null);
+
     onChange({
       target: {
         name,
@@ -288,5 +276,16 @@ export default function SearchableRemoteSelect(attrs: any) {
       <Field.Error />
       {selectedValuesTags}
     </Field.Root>
+  );
+}
+
+export default function SearchableRemoteSelect(props: any) {
+  const theme = useTheme();
+  const designSystem = useDesignSystem('SearchableRemoteSelect');
+
+  return (
+    <DesignSystemProvider locale={designSystem?.locale || 'en'} theme={theme}>
+      <SearchableRemoteSelectComponent {...props} />
+    </DesignSystemProvider>
   );
 }

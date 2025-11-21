@@ -4,18 +4,18 @@ import { getRemoteSelectRegisterOptions } from '../../utils/getRemoteSelectRegis
 import getTrad from '../../utils/getTrad';
 import SearchableRemoteSelectInputIcon from '../SearchableRemoteSelectInputIcon';
 
-export function registerSearchableRemoteSelect(app: StrapiApp): void {
+export function registerSearchableRemoteSelectMulti(app: StrapiApp): void {
   app.customFields.register({
-    name: 'searchable-remote-select',
+    name: 'searchable-remote-select-multi',
     pluginId: pluginId,
-    type: 'text',
+    type: 'json',
     intlLabel: {
-      id: getTrad('searchable-remote-select.label'),
-      defaultMessage: 'Searchable remote select',
+      id: getTrad('searchable-remote-select-multi.label'),
+      defaultMessage: 'Searchable remote select (Multi)',
     },
     intlDescription: {
       id: getTrad('remote-select.description'),
-      defaultMessage: 'Select options from the remote source with search support',
+      defaultMessage: 'Select multiple options from the remote source with search support',
     },
     icon: SearchableRemoteSelectInputIcon,
     components: {

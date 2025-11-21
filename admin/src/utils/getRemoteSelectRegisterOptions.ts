@@ -154,20 +154,6 @@ export function getRemoteSelectRegisterOptions(type: SelectType): CustomFieldOpt
             },
           },
           {
-            name: 'options.mapping.labelJsonPath' as any,
-            type: 'string',
-            defaultValue: '$',
-            intlLabel: {
-              id: getTrad('basic.labelJsonPath'),
-              defaultMessage: 'JSON path to label for each item object',
-            },
-            description: {
-              id: getTrad('basic.labelJsonPath-note'),
-              defaultMessage:
-                'JSON path to label for each item object.  "$"- here it is the each options item selected from "JSON path to options array"',
-            },
-          },
-          {
             name: 'options.mapping.valueJsonPath' as any,
             type: 'string',
             defaultValue: '$',
@@ -200,31 +186,6 @@ export function getRemoteSelectRegisterOptions(type: SelectType): CustomFieldOpt
           defaultMessage: 'Settings',
         },
         items: [
-          {
-            name: 'options.select.multi' as any,
-            type: 'checkbox',
-            intlLabel: {
-              id: getTrad('select.multi-label'),
-              defaultMessage: 'Multi mode',
-            },
-            description: getTranslationBySelectType(translationsOptions.multiModeDescription, type),
-          },
-          ...(type === 'searchable'
-            ? [
-                {
-                  name: 'options.select.metadataSlug' as any,
-                  type: 'checkbox' as any,
-                  intlLabel: {
-                    id: getTrad('select.metadata-slug-label'),
-                    defaultMessage: 'Metadata Slug',
-                  },
-                  description: {
-                    id: getTrad('select.metadata-slug-description'),
-                    defaultMessage: 'Store only the value as string (not JSON). Only works in single mode.',
-                  },
-                },
-              ]
-            : []),
           {
             name: 'required',
             type: 'checkbox' as any,
@@ -265,7 +226,6 @@ export function getRemoteSelectRegisterOptions(type: SelectType): CustomFieldOpt
           .optional()
           .shape({
             sourceJsonPath: yup.string().optional(),
-            labelJsonPath: yup.string().optional(),
             valueJsonPath: yup.string().optional(),
           })
           .nullable(),
