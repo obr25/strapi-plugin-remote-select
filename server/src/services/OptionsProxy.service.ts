@@ -34,20 +34,21 @@ export const OptionsProxyService = ({ strapi }: { strapi: Core.Strapi }) => ({
     const timeout = setTimeout(() => controller.abort(), this.getPluginConfig().timeoutMs);
 
     try {
+      const method = config.fetch.method || 'GET';
       const fetchOptions: RequestInit = {
-        method: config.fetch.method,
+        method,
         headers: this.parseStringHeaders(config.fetch.headers),
         signal: controller.signal,
       };
 
-      if (!['GET', 'HEAD'].includes(config.fetch.method.toUpperCase()) && config.fetch.body) {
+      if (!['GET', 'HEAD'].includes(method.toUpperCase()) && config.fetch.body) {
         fetchOptions.body = this.replaceVariables(config.fetch.body);
       }
 
       const res = await fetch(url, fetchOptions);
       const response = await this.parseJsonResponse(res);
 
-      return this.parseOptions(response, config.mapping);
+      return this.parseOptions(response, config.mapping ?? null);
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         throw new ApplicationError('Remote options request timed out');
@@ -299,9 +300,9 @@ export const OptionsProxyService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
   parseOptions(
     response: any,
-    mappingConfig: FlexibleSelectMappingConfig
+    mappingConfig: FlexibleSelectMappingConfig | null | undefined
   ): SearchableRemoteSelectValue[] {
-    const selectedOptions = this.selectValues(response, mappingConfig.sourceJsonPath || '$');
+    const selectedOptions = this.selectValues(response, mappingConfig?.sourceJsonPath || '$');
     const options =
       selectedOptions.length === 1 && Array.isArray(selectedOptions[0])
         ? selectedOptions[0]
@@ -317,10 +318,10 @@ export const OptionsProxyService = ({ strapi }: { strapi: Core.Strapi }) => ({
           };
         }
 
-        const value = this.getOptionItem(option, mappingConfig.valueJsonPath);
+        const value = this.getOptionItem(option, mappingConfig?.valueJsonPath);
         const label = this.getOptionItem(
           option,
-          mappingConfig.labelJsonPath || mappingConfig.valueJsonPath
+          mappingConfig?.labelJsonPath || mappingConfig?.valueJsonPath
         );
 
         return {
@@ -383,18 +384,24 @@ export const OptionsProxyService = ({ strapi }: { strapi: Core.Strapi }) => ({
     }
 
     if (!path.startsWith('$')) {
-      throw new ValidationError('Mapping path must start with "$"');
+      return [];
     }
 
     const segments: PathSegment[] = [];
     let rest = path.slice(1);
 
     while (rest.length > 0) {
+      if (rest.startsWith('.*')) {
+        segments.push('*');
+        rest = rest.slice(2);
+        continue;
+      }
+
       if (rest.startsWith('.')) {
         const match = rest.match(/^\.([A-Za-z_$][A-Za-z0-9_$-]*)/);
 
         if (!match) {
-          throw new ValidationError(`Unsupported mapping path syntax: ${path}`);
+          return segments;
         }
 
         segments.push(match[1]);
@@ -410,7 +417,7 @@ export const OptionsProxyService = ({ strapi }: { strapi: Core.Strapi }) => ({
         continue;
       }
 
-      throw new ValidationError(`Unsupported mapping path syntax: ${path}`);
+      return segments;
     }
 
     return segments;

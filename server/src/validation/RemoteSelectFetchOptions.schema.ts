@@ -3,7 +3,7 @@ import * as yup from 'yup';
 export const RemoteSelectFetchOptionsSchema = yup.object().shape({
   fetch: yup.object().shape({
     url: yup.string().required(),
-    method: yup.string().oneOf(['GET', 'POST', 'PUT']).required(),
+    method: yup.string().optional(),
     headers: yup.string().optional(),
     body: yup.string().optional(),
   }).required(),

@@ -8,15 +8,12 @@ const { ValidationError } = errors;
 export default ({ strapi }: { strapi: Core.Strapi }) => ({
   async index(ctx: any): Promise<void> {
     try {
-      /**
-       * Represents the configuration for a flexible select options fetch.
-       */
       const flexibleSelectConfig = (await RemoteSelectFetchOptionsSchema.validate(
         ctx.request.body,
         {
           strict: true,
-          stripUnknown: true, // Removing unknown fields
-          abortEarly: false, // Returning all errors
+          stripUnknown: true,
+          abortEarly: false,
         }
       )) as any as RemoteSelectFetchOptions;
 
@@ -26,10 +23,12 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
         >
       ).getOptionsByConfig(flexibleSelectConfig);
     } catch (error) {
-      // Handling error
+      strapi.log.error('[remote-select] error name: ' + error.name);
+      strapi.log.error('[remote-select] error message: ' + error.message);
+      strapi.log.error('[remote-select] validation errors: ' + JSON.stringify(error.errors, null, 2));
       if (error.name === 'ValidationError')
-        throw new ValidationError('Validation error', error.errors); // Throwing validation error
-      throw error; // Throwing error
+        throw new ValidationError('Validation error', error.errors);
+      throw error;
     }
   },
 });
