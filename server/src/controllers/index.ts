@@ -1,5 +1,7 @@
 import FetchOptionsProxyController from './FetchOptionsProxy.controller';
 
-export default {
+const controllers: Record<string, unknown> = {
   FetchOptionsProxyController,
 };
+
+export default controllers;

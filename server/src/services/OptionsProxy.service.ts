@@ -1,57 +1,287 @@
 import { Core } from '@strapi/strapi';
-import { query } from 'jsonpath';
+import { errors } from '@strapi/utils';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import type { FlexibleSelectMappingConfig } from '../../../types/FlexibleSelectConfig';
 import type { RemoteSelectFetchOptions } from '../../../types/RemoteSelectFetchOptions';
 import { RemoteSelectPluginOptions } from '../../../types/RemoteSelectPluginOptions';
 import { SearchableRemoteSelectValue } from '../../../types/SearchableRemoteSelectValue';
 
-export const OptionsProxyService = ({ strapi }: { strapi: Core.Strapi }) => ({
-  /**
-   * Fetches options based on a provided configuration object, processes the response,
-   * and maps the data into the desired format.
-   *
-   * @param  config - The configuration object containing fetch details,
-   * including URL, method, headers, body, and mapping instructions for processing the response.
-   * @return  A promise that resolves to the processed options extracted and mapped from the response.
-   */
-  async getOptionsByConfig(config: RemoteSelectFetchOptions) {
-    const fetchOptions: RequestInit = {
-      method: config.fetch.method,
-      headers: this.parseStringHeaders(config.fetch.headers)
-    };
-  
-    // Only add body for methods that support it (not GET/HEAD)
-    if (config.fetch.method &&
-        !['GET', 'HEAD'].includes(config.fetch.method.toUpperCase()) &&
-        config.fetch.body) {
-      fetchOptions.body = this.replaceVariables(config.fetch.body);
-    }
+const { ApplicationError, ForbiddenError, ValidationError } = errors;
 
-    const res = await fetch(this.replaceVariables(config.fetch.url), fetchOptions);
-    const response = await res.json();
-    return this.parseOptions(response, config.mapping);
+const DEFAULT_OPTIONS: Required<
+  Omit<RemoteSelectPluginOptions, 'variables' | 'allowedVariableNames'>
+> & {
+  allowedVariableNames: string[];
+} = {
+  allowedHosts: [],
+  allowedIpRanges: [],
+  allowedProtocols: ['https:'],
+  allowedVariableNames: [],
+  timeoutMs: 10000,
+  maxResponseBytes: 1048576,
+  allowedContentTypes: ['application/json'],
+};
+
+type PathSegment = string | number | '*';
+
+export const OptionsProxyService = ({ strapi }: { strapi: Core.Strapi }) => ({
+  async getOptionsByConfig(config: RemoteSelectFetchOptions) {
+    const url = this.replaceVariables(config.fetch.url);
+    await this.assertAllowedUrl(url);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.getPluginConfig().timeoutMs);
+
+    try {
+      const fetchOptions: RequestInit = {
+        method: config.fetch.method,
+        headers: this.parseStringHeaders(config.fetch.headers),
+        signal: controller.signal,
+      };
+
+      if (!['GET', 'HEAD'].includes(config.fetch.method.toUpperCase()) && config.fetch.body) {
+        fetchOptions.body = this.replaceVariables(config.fetch.body);
+      }
+
+      const res = await fetch(url, fetchOptions);
+      const response = await this.parseJsonResponse(res);
+
+      return this.parseOptions(response, config.mapping);
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        throw new ApplicationError('Remote options request timed out');
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   },
 
-  /**
-   * Parses a string of headers into an object where each key is a header name and each value is the corresponding header value.
-   *
-   * @param [headers] - A string representing the headers, where each header is separated by a newline and the key-value pairs are separated by a colon.
-   * @return An object containing the parsed headers where the keys are the header names in lowercase, and the values are the corresponding header values.
-   */
+  getPluginConfig() {
+    const config = strapi.config.get<RemoteSelectPluginOptions>('plugin::remote-select') ?? {
+      variables: {},
+    };
+
+    return {
+      ...DEFAULT_OPTIONS,
+      ...config,
+      variables: config.variables ?? {},
+      allowedHosts: config.allowedHosts ?? DEFAULT_OPTIONS.allowedHosts,
+      allowedIpRanges: config.allowedIpRanges ?? DEFAULT_OPTIONS.allowedIpRanges,
+      allowedProtocols: config.allowedProtocols ?? DEFAULT_OPTIONS.allowedProtocols,
+      allowedVariableNames: config.allowedVariableNames ?? DEFAULT_OPTIONS.allowedVariableNames,
+      allowedContentTypes: config.allowedContentTypes ?? DEFAULT_OPTIONS.allowedContentTypes,
+      timeoutMs: config.timeoutMs ?? DEFAULT_OPTIONS.timeoutMs,
+      maxResponseBytes: config.maxResponseBytes ?? DEFAULT_OPTIONS.maxResponseBytes,
+    };
+  },
+
+  async assertAllowedUrl(rawUrl: string): Promise<void> {
+    let url: URL;
+
+    try {
+      url = new URL(rawUrl);
+    } catch {
+      throw new ValidationError('Fetch options url must be an absolute URL');
+    }
+
+    const config = this.getPluginConfig();
+    const hostname = url.hostname.toLowerCase();
+
+    if (!config.allowedProtocols.includes(url.protocol as 'http:' | 'https:')) {
+      throw new ForbiddenError(`Protocol "${url.protocol}" is not allowed`);
+    }
+
+    if (!this.isHostAllowed(hostname, config.allowedHosts)) {
+      throw new ForbiddenError(`Host "${hostname}" is not allowed`);
+    }
+
+    const addresses = await this.resolveHost(hostname);
+
+    if (
+      addresses.some(
+        (address) =>
+          this.isPrivateAddress(address) && !this.isAddressAllowed(address, config.allowedIpRanges)
+      )
+    ) {
+      throw new ForbiddenError(`Host "${hostname}" resolves to a disallowed private address`);
+    }
+  },
+
+  isHostAllowed(hostname: string, allowedHosts: string[]): boolean {
+    return allowedHosts.some((allowedHost) => {
+      const normalized = allowedHost.toLowerCase();
+
+      if (normalized.startsWith('*.')) {
+        const suffix = normalized.slice(1);
+        return hostname.endsWith(suffix) && hostname !== normalized.slice(2);
+      }
+
+      return hostname === normalized;
+    });
+  },
+
+  async resolveHost(hostname: string): Promise<string[]> {
+    if (isIP(hostname)) {
+      return [hostname];
+    }
+
+    const records = await lookup(hostname, { all: true, verbatim: true });
+
+    return records.map((record) => record.address);
+  },
+
+  isPrivateAddress(address: string): boolean {
+    if (isIP(address) === 4) {
+      const parts = address.split('.').map(Number);
+      const [first, second] = parts;
+
+      return (
+        first === 0 ||
+        first === 10 ||
+        first === 127 ||
+        (first === 169 && second === 254) ||
+        (first === 172 && second >= 16 && second <= 31) ||
+        (first === 192 && second === 168) ||
+        first >= 224
+      );
+    }
+
+    const normalized = address.toLowerCase();
+
+    return (
+      normalized === '::1' ||
+      normalized === '::' ||
+      normalized.startsWith('fc') ||
+      normalized.startsWith('fd') ||
+      normalized.startsWith('fe80:')
+    );
+  },
+
+  isAddressAllowed(address: string, ranges: string[]): boolean {
+    return ranges.some((range) => {
+      if (!range.includes('/')) {
+        return address === range;
+      }
+
+      return this.isIpv4InCidr(address, range);
+    });
+  },
+
+  isIpv4InCidr(address: string, cidr: string): boolean {
+    if (isIP(address) !== 4) {
+      return false;
+    }
+
+    const [rangeAddress, bitsRaw] = cidr.split('/');
+    const bits = Number(bitsRaw);
+
+    if (isIP(rangeAddress) !== 4 || !Number.isInteger(bits) || bits < 0 || bits > 32) {
+      return false;
+    }
+
+    const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+
+    return (this.ipv4ToNumber(address) & mask) === (this.ipv4ToNumber(rangeAddress) & mask);
+  },
+
+  ipv4ToNumber(address: string): number {
+    return address
+      .split('.')
+      .map(Number)
+      .reduce((result, value) => ((result << 8) + value) >>> 0, 0);
+  },
+
+  async parseJsonResponse(res: Response): Promise<any> {
+    if (!res.ok) {
+      throw new ApplicationError(`Remote options request failed with status ${res.status}`);
+    }
+
+    const contentType = res.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? '';
+
+    if (!this.isAllowedContentType(contentType)) {
+      throw new ApplicationError(
+        `Remote options response content type "${contentType}" is not allowed`
+      );
+    }
+
+    const rawBody = await this.readResponseBody(res);
+
+    try {
+      return JSON.parse(rawBody);
+    } catch {
+      throw new ApplicationError('Remote options response is not valid JSON');
+    }
+  },
+
+  isAllowedContentType(contentType: string): boolean {
+    const allowedContentTypes = this.getPluginConfig().allowedContentTypes.map((type) =>
+      type.toLowerCase()
+    );
+
+    return allowedContentTypes.some(
+      (allowed) =>
+        contentType === allowed || (allowed === 'application/json' && contentType.endsWith('+json'))
+    );
+  },
+
+  async readResponseBody(res: Response): Promise<string> {
+    const maxResponseBytes = this.getPluginConfig().maxResponseBytes;
+    const reader = res.body?.getReader();
+
+    if (!reader) {
+      return '';
+    }
+
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      totalBytes += value.byteLength;
+
+      if (totalBytes > maxResponseBytes) {
+        await reader.cancel();
+        throw new ApplicationError('Remote options response exceeds the configured size limit');
+      }
+
+      chunks.push(value);
+    }
+
+    const body = new Uint8Array(totalBytes);
+    let offset = 0;
+
+    chunks.forEach((chunk) => {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    });
+
+    return new TextDecoder().decode(body);
+  },
+
   parseStringHeaders(headers?: string): Record<string, string> {
     if (!headers) return {};
 
     const result: Record<string, string> = {};
-
-    headers = this.replaceVariables(headers);
-
-    const headersArr = this.trim(headers).split('\n');
+    const headersArr = this.trim(this.replaceVariables(headers)).split('\n');
 
     for (let i = 0; i < headersArr.length; i++) {
       const row = headersArr[i];
-      const index = row.indexOf(':'),
-        key = this.trim(row.slice(0, index)).toLowerCase(),
-        value = this.trim(row.slice(index + 1));
+      const index = row.indexOf(':');
+
+      if (index <= 0) {
+        throw new ValidationError('Fetch headers must use "Name: value" lines');
+      }
+
+      const key = this.trim(row.slice(0, index)).toLowerCase();
+      const value = this.trim(row.slice(index + 1));
 
       if (typeof result[key] === 'undefined') {
         result[key] = value;
@@ -63,54 +293,39 @@ export const OptionsProxyService = ({ strapi }: { strapi: Core.Strapi }) => ({
     return result;
   },
 
-  /**
-   * Removes leading and trailing whitespace characters from a given string.
-   *
-   * @param {string} val - The string to be trimmed.
-   * @return {string} The trimmed string without leading or trailing whitespace.
-   */
   trim(val: string): string {
     return val.replace(/^\s+|\s+$/g, '');
   },
 
-  /**
-   * Parses options from the provided response using the given mapping configuration.
-   *
-   * @param {any} response - The JSON response to parse and extract options from.
-   * @param  mappingConfig - The configuration defining the paths for extracting values.
-   * @return {SearchableRemoteSelectValue[]} An array of unique options with `value` and `label` properties (label = value).
-   */
   parseOptions(
     response: any,
     mappingConfig: FlexibleSelectMappingConfig
   ): SearchableRemoteSelectValue[] {
-    /**
-     * Query options for mapping JSON response.
-     */
-    const options = query(response, mappingConfig.sourceJsonPath || '$');
+    const selectedOptions = this.selectValues(response, mappingConfig.sourceJsonPath || '$');
+    const options =
+      selectedOptions.length === 1 && Array.isArray(selectedOptions[0])
+        ? selectedOptions[0]
+        : selectedOptions;
 
-    /**
-     * Filter and map options array to prepare options with value and label.
-     * Label is always set to the same as value (display slug).
-     *
-     * @param {Array} options - The options array to filter and map.
-     * @returns {Array} The prepared options array with value and label.
-     */
     const preparedOptionsArray = options
       .filter((item: any) => item !== undefined && item !== null)
       .map((option: any) => {
         if (typeof option !== 'object') {
           return {
-            value: option,
-            label: option,
+            value: String(option),
+            label: String(option),
           };
         }
 
         const value = this.getOptionItem(option, mappingConfig.valueJsonPath);
+        const label = this.getOptionItem(
+          option,
+          mappingConfig.labelJsonPath || mappingConfig.valueJsonPath
+        );
 
         return {
           value,
-          label: value, // Display value/slug instead of separate label
+          label,
         };
       });
 
@@ -125,54 +340,97 @@ export const OptionsProxyService = ({ strapi }: { strapi: Core.Strapi }) => ({
         new Map<string, SearchableRemoteSelectValue>()
       );
 
-    /**
-     * Convert Map to array of unique values
-     */
     return Array.from(uniqueValuesOptionsMap.values());
   },
 
-  /**
-   * Retrieves the value of a specific item from a JSON object based on a given JSON path.
-   * If the item is not a string, it is converted to a string representation using JSON.stringify.
-   *
-   * @param {any} rawOption - The JSON object from which to extract the item.
-   * @param {string} jsonPath - The JSON path to locate the item. Defaults to "$" (root object).
-   *
-   * @return {string} The value of the item as a string.
-   */
-  getOptionItem(rawOption: any, jsonPath?: string): string {
-    const value = query(rawOption, jsonPath || '$', 1)?.[0];
+  getOptionItem(rawOption: any, path?: string): string {
+    const value = this.selectValues(rawOption, path || '$')[0];
 
-    if (typeof value !== 'string') {
-      if (typeof value === 'number') {
-        return value.toString();
-      } else {
-        return JSON.stringify(value);
-      }
+    if (typeof value === 'string') {
+      return value;
     }
 
-    return value;
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return value.toString();
+    }
+
+    return JSON.stringify(value);
   },
 
-  /**
-   * Replaces variables in a given string with corresponding values from the configuration.
-   * Variables in the input string are denoted by `{variableName}`.
-   *
-   * @param {string} str - The input string containing variables to be replaced.
-   * @return {string} The string with variables replaced by their corresponding values.
-   * If a variable does not exist in the configuration, it remains unchanged.
-   */
+  selectValues(source: any, path: string): any[] {
+    const segments = this.parseSafePath(path);
+
+    return segments.reduce(
+      (values: any[], segment) =>
+        values.flatMap((value) => {
+          if (segment === '*') {
+            return Array.isArray(value) ? value : [];
+          }
+
+          if (value === undefined || value === null) {
+            return [];
+          }
+
+          return value[segment] === undefined ? [] : [value[segment]];
+        }),
+      [source]
+    );
+  },
+
+  parseSafePath(path: string): PathSegment[] {
+    if (!path || path === '$') {
+      return [];
+    }
+
+    if (!path.startsWith('$')) {
+      throw new ValidationError('Mapping path must start with "$"');
+    }
+
+    const segments: PathSegment[] = [];
+    let rest = path.slice(1);
+
+    while (rest.length > 0) {
+      if (rest.startsWith('.')) {
+        const match = rest.match(/^\.([A-Za-z_$][A-Za-z0-9_$-]*)/);
+
+        if (!match) {
+          throw new ValidationError(`Unsupported mapping path syntax: ${path}`);
+        }
+
+        segments.push(match[1]);
+        rest = rest.slice(match[0].length);
+        continue;
+      }
+
+      const indexMatch = rest.match(/^\[(\d+|\*)\]/);
+
+      if (indexMatch) {
+        segments.push(indexMatch[1] === '*' ? '*' : Number(indexMatch[1]));
+        rest = rest.slice(indexMatch[0].length);
+        continue;
+      }
+
+      throw new ValidationError(`Unsupported mapping path syntax: ${path}`);
+    }
+
+    return segments;
+  },
+
   replaceVariables(str: string): string {
-    const variables =
-      strapi.config.get<RemoteSelectPluginOptions>('plugin::remote-select')?.variables ?? {};
+    const { variables, allowedVariableNames } = this.getPluginConfig();
 
     if (!str || typeof str !== 'string') {
       return str;
     }
 
     return str.replace(/\{([^}]+)\}/g, (match, key) => {
+      if (!allowedVariableNames.includes(key)) {
+        throw new ForbiddenError(`Variable "${key}" is not allowed in remote-select requests`);
+      }
+
       return variables[key] !== undefined ? String(variables[key]) : match;
     });
   },
 });
+
 export default OptionsProxyService;

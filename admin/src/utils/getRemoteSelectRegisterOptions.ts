@@ -1,4 +1,4 @@
-import { MessageDescriptor } from '@formatjs/intl/src/types';
+import { MessageDescriptor } from 'react-intl';
 import * as yup from 'yup';
 import getTrad from './getTrad';
 import { CustomFieldOptions } from './types';
@@ -167,6 +167,20 @@ export function getRemoteSelectRegisterOptions(type: SelectType): CustomFieldOpt
                 'JSON path to value for each item object. "$"- here it is the each options item selected from "JSON path to options array"',
             },
           },
+          {
+            name: 'options.mapping.labelJsonPath' as any,
+            type: 'string',
+            defaultValue: '$',
+            intlLabel: {
+              id: getTrad('basic.labelJsonPath'),
+              defaultMessage: 'JSON path to label for each item object',
+            },
+            description: {
+              id: getTrad('basic.labelJsonPath-note'),
+              defaultMessage:
+                'JSON path to label for each item object. "$"- here it is the each options item selected from "JSON path to options array"',
+            },
+          },
         ],
       },
     ],
@@ -227,6 +241,7 @@ export function getRemoteSelectRegisterOptions(type: SelectType): CustomFieldOpt
           .shape({
             sourceJsonPath: yup.string().optional(),
             valueJsonPath: yup.string().optional(),
+            labelJsonPath: yup.string().optional(),
           })
           .nullable(),
       };

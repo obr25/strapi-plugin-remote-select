@@ -1,17 +1,18 @@
 import {
+  DesignSystemProvider,
   Field,
   MultiSelect,
   MultiSelectOption,
   SingleSelect,
   SingleSelectOption,
-  DesignSystemProvider,
   useDesignSystem,
 } from '@strapi/design-system';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import { useTheme } from 'styled-components';
 import { FlexibleSelectConfig } from '../../../../types/FlexibleSelectConfig';
 import { SearchableRemoteSelectValue } from '../../../../types/SearchableRemoteSelectValue';
+import { useRemoteSelectApi } from '../../utils/remoteSelectApi';
 
 function RemoteSelectComponent({
   value,
@@ -39,6 +40,8 @@ function RemoteSelectComponent({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [options, setOptions] = useState<Array<SearchableRemoteSelectValue>>([]);
   const [optionsLoadingError, setLoadingError] = useState<any | undefined>();
+  const requestIdRef = useRef(0);
+  const { loadOptions: loadRemoteOptions } = useRemoteSelectApi();
 
   const valueParsed = useMemo<string | string[]>(() => {
     if (!value) {
@@ -58,32 +61,33 @@ function RemoteSelectComponent({
   }, [value, isMulti]);
 
   useEffect(() => {
-    loadOptions();
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+
+    loadOptions(requestId);
+
+    return () => {
+      requestIdRef.current += 1;
+    };
   }, []);
 
-  async function loadOptions(): Promise<void> {
+  async function loadOptions(requestId: number): Promise<void> {
     setIsLoading(true);
     try {
-      const res = await fetch('/remote-select/options-proxy', {
-        method: 'POST',
-        body: JSON.stringify({
-          fetch: selectConfiguration.fetch,
-          mapping: selectConfiguration.mapping,
-        }),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      const loadedOptions = await loadRemoteOptions(selectConfiguration);
 
-      if (res.status === 200) {
-        setOptions(await res.json());
-      } else {
-        setLoadingError(res.statusText + ', code:  ' + res.status);
+      if (requestId === requestIdRef.current) {
+        setOptions(loadedOptions);
+        setLoadingError(undefined);
       }
     } catch (err) {
-      setLoadingError((err as any)?.message || err?.toString());
+      if (requestId === requestIdRef.current) {
+        setLoadingError((err as any)?.message || err?.toString());
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }
 
@@ -94,10 +98,10 @@ function RemoteSelectComponent({
       // Multi mode: type 'json' stores actual array (no stringify)
       const arrayValue = Array.isArray(value) ? value : [];
       const filtered = arrayValue.filter((el) => el !== undefined && el !== null);
-      finalValue = filtered.length ? filtered : (required ? undefined : []);
+      finalValue = filtered.length ? filtered : required ? undefined : [];
     } else {
       // Single mode: type 'text' stores plain string
-      finalValue = value ? String(value) : (required ? undefined : null);
+      finalValue = value ? String(value) : required ? undefined : null;
     }
 
     onChange({

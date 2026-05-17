@@ -1,26 +1,18 @@
 import type { StrapiApp } from '@strapi/strapi/admin';
-import pluginId from '../../pluginId';
-import { getRemoteSelectRegisterOptions } from '../../utils/getRemoteSelectRegisterOptions';
-import getTrad from '../../utils/getTrad';
+import { registerRemoteSelectField } from '../../utils/registerRemoteSelectField';
 import SearchableRemoteSelectInputIcon from '../SearchableRemoteSelectInputIcon';
 
 export function registerSearchableRemoteSelect(app: StrapiApp): void {
-  app.customFields.register({
+  registerRemoteSelectField({
+    app,
     name: 'searchable-remote-select',
-    pluginId: pluginId,
     type: 'text',
-    intlLabel: {
-      id: getTrad('searchable-remote-select.label'),
-      defaultMessage: 'Searchable remote select',
-    },
-    intlDescription: {
-      id: getTrad('remote-select.description'),
-      defaultMessage: 'Select options from the remote source with search support',
-    },
+    selectType: 'searchable',
+    labelId: 'searchable-remote-select.label',
+    labelDefaultMessage: 'Searchable remote select',
+    descriptionDefaultMessage: 'Select options from the remote source with search support',
     icon: SearchableRemoteSelectInputIcon,
-    components: {
-      Input: async () => import(/* webpackChunkName: "SearchableRemoteSelect" */ './SearchableRemoteSelect'),
-    },
-    options: getRemoteSelectRegisterOptions('searchable'),
+    input: async () =>
+      import(/* webpackChunkName: "SearchableRemoteSelect" */ './SearchableRemoteSelect'),
   });
 }

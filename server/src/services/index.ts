@@ -1,6 +1,7 @@
 import { OptionsProxyService } from './OptionsProxy.service';
 
-export default {
-  // service,
+const services: Record<string, unknown> = {
   OptionsProxyService,
 };
+
+export default services;

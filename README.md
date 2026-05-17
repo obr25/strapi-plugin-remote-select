@@ -64,7 +64,7 @@ Each input select that this plugin adds has a similar configuration:
 
 ### Basic settings
 
-Module is using JSON path for allow configurable way to get an option array, label, and value for options objects. Learn more about [JSON path here](https://github.com/dchester/jsonpath)
+Module uses a safe JSON path subset to configure how it reads the option array, labels, and values. Supported syntax is `$`, dot properties like `$.products`, array indexes like `$.products[0]`, and array expansion like `$.products[*]`.
 
 | Field name                              | Type     | Description                                                                                                          |
 | --------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
@@ -84,40 +84,50 @@ Advanced settings:
 | Multi mode    | `string` |             |
 | Private field | `string` |             |
 
-
 ## Variables in API Requests
+
 The plugin now supports using variables in your API URLs, headers, and request bodies.
 This allows for dynamic configuration of your API requests.
 
 ### Setting up variables
+
 Add variables to your plugin configuration in `config/plugins.js`:
 
-``` js
+```js
 module.exports = {
-  "remote-select": {
+  'remote-select': {
     enabled: true,
+    allowedHosts: ['api.example.com'],
+    allowedProtocols: ['https:'],
+    allowedVariableNames: ['apiBaseUrl', 'apiVersion', 'authToken'],
     variables: {
-      apiBaseUrl: "https://api.example.com",
-      apiVersion: "v2",
-      authToken: "your-auth-token"
-    }
+      apiBaseUrl: 'https://api.example.com',
+      apiVersion: 'v2',
+      authToken: 'your-auth-token',
+    },
+    timeoutMs: 10000,
+    maxResponseBytes: 1048576,
   },
 };
 ```
 
+Remote requests are denied unless the target host matches `allowedHosts`. Use exact hostnames such as `api.example.com` or wildcard subdomains such as `*.example.com`. Private network addresses are blocked by default; if you intentionally need one, add the exact address or IPv4 CIDR to `allowedIpRanges`.
+
 ### Using variables
+
 You can use variables in your configuration by surrounding the variable name with curly braces:
+
 - In API URLs: `{apiBaseUrl}/products/{apiVersion}/list`
 - In request headers: `Authorization: Bearer {authToken}`
 - In request bodies: `{ "version": "{apiVersion}" }`
 
 Variables provide a convenient way to:
+
 - Manage environment-specific API endpoints
 - Share authentication tokens across multiple select configurations
 - Update common values in one place instead of modifying each select configuration
 
-If a variable isn't defined in your configuration, the placeholder will remain unchanged in the request.
-
+Only variables listed in `allowedVariableNames` can be interpolated into requests.
 
 ### Remote select input
 
@@ -214,4 +224,3 @@ and as a result, we have: (single mode)
 multiple mode:
 
 ![Searchable remote select multi input](https://github.com/dmitriy-nz/strapi-plugin-remote-select/raw/main/screenshots/searchable-remote-select-input.multiple.gif)
-

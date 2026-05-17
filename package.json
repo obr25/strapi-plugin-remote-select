@@ -1,5 +1,5 @@
 {
-  "version": "2.0.5",
+  "version": "3.0.0",
   "keywords": [
     "strapi select",
     "strapi multi selects",
@@ -32,15 +32,13 @@
     "watch": "strapi-plugin watch",
     "watch:link": "strapi-plugin watch:link",
     "verify": "strapi-plugin verify",
-    "test:ts:front": "run -T tsc -p admin/tsconfig.json",
-    "test:ts:back": "run -T tsc -p server/tsconfig.json"
+    "test:ts:front": "tsc -p admin/tsconfig.json --noEmit",
+    "test:ts:back": "tsc -p server/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@strapi/design-system": "^2.0.0-rc.12",
     "@strapi/icons": "^2.0.0-rc.12",
-    "react-intl": "^6.8.4",
-    "jsonpath": "^1.1.1",
-    "lodash-es": "^4.17.21"
+    "react-intl": "^6.8.4"
   },
   "devDependencies": {
     "@strapi/strapi": "^5.2.0",
@@ -54,8 +52,6 @@
     "@types/react-dom": "^18.3.1",
     "@strapi/typescript-utils": "^5.2.0",
     "typescript": "^5.6.3",
-    "@types/jsonpath": "^0.2.4",
-    "@types/lodash-es": "^4.17.12",
     "prettier-plugin-organize-imports": "^3.2.4"
   },
   "peerDependencies": {

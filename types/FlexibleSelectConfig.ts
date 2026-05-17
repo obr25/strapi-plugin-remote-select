@@ -14,6 +14,7 @@ export interface FlexibleSelectFetchConfig {
 export interface FlexibleSelectMappingConfig {
   sourceJsonPath: string;
   valueJsonPath: string;
+  labelJsonPath?: string;
 }
 
 export interface FlexibleSelectSelectConfig {

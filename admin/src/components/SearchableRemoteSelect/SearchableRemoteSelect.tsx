@@ -1,11 +1,21 @@
-import { Checkbox, Combobox, ComboboxOption, Field, Flex, Tag, DesignSystemProvider, useDesignSystem } from '@strapi/design-system';
+import {
+  Checkbox,
+  Combobox,
+  ComboboxOption,
+  DesignSystemProvider,
+  Field,
+  Flex,
+  Tag,
+  useDesignSystem,
+} from '@strapi/design-system';
 import { Cross } from '@strapi/icons';
-import { debounce } from 'lodash-es';
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import { useTheme } from 'styled-components';
 import { FlexibleSelectConfig } from '../../../../types/FlexibleSelectConfig';
 import { SearchableRemoteSelectValue } from '../../../../types/SearchableRemoteSelectValue';
+import { debounce } from '../../utils/debounce';
+import { createSearchableFetchConfig, useRemoteSelectApi } from '../../utils/remoteSelectApi';
 
 function SearchableRemoteSelectComponent(attrs: any) {
   const { name, error, hint, onChange, value, label, attribute, required } = attrs;
@@ -17,6 +27,8 @@ function SearchableRemoteSelectComponent(attrs: any) {
   const [options, setOptions] = useState<Array<SearchableRemoteSelectValue>>([]);
   const [loadingError, setLoadingError] = useState<any>(undefined);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const requestIdRef = useRef(0);
+  const { loadOptions: loadRemoteOptions } = useRemoteSelectApi();
   const isMulti = useMemo<boolean>(
     () => attribute.customField === 'plugin::remote-select.searchable-remote-select-multi',
     [attribute]
@@ -35,9 +47,9 @@ function SearchableRemoteSelectComponent(attrs: any) {
       }
 
       // Convert array of strings to display objects
-      return value.map(val => ({
+      return value.map((val) => ({
         value: String(val).trim(),
-        label: String(val).trim()
+        label: String(val).trim(),
       }));
     } else {
       // Single mode: type 'text' returns plain string
@@ -47,7 +59,7 @@ function SearchableRemoteSelectComponent(attrs: any) {
 
       return {
         value: value.trim(),
-        label: value.trim()
+        label: value.trim(),
       };
     }
   }, [value, isMulti]);
@@ -56,47 +68,41 @@ function SearchableRemoteSelectComponent(attrs: any) {
   );
   const loadOptionsDebounced = useCallback(
     debounce((value: string) => {
-      setIsLoading(true);
-      loadOptions(value);
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      loadOptions(value, requestId);
     }, 500),
     []
   );
 
   useEffect(() => {
     loadOptionsDebounced(valueParsed && isSingleParsed(valueParsed) ? valueParsed.label : '');
+    return () => {
+      requestIdRef.current += 1;
+      loadOptionsDebounced.cancel();
+    };
   }, []);
 
-  async function loadOptions(searchModel: string): Promise<void> {
+  async function loadOptions(searchModel: string, requestId: number): Promise<void> {
+    setIsLoading(true);
     try {
-      const config = { ...selectConfiguration.fetch };
-      config.url = (config.url || '').replace('{q}', searchModel);
+      const loadedOptions = await loadRemoteOptions(
+        selectConfiguration,
+        createSearchableFetchConfig(selectConfiguration.fetch, searchModel)
+      );
 
-      const res = await fetch(window.location.origin + '/remote-select/options-proxy', {
-        method: 'POST',
-        body: JSON.stringify({
-          fetch: {
-            ...selectConfiguration.fetch,
-            url: selectConfiguration.fetch.url.replace('{q}', searchModel),
-            body:
-              selectConfiguration.fetch.body &&
-              selectConfiguration.fetch.body.replace('{q}', searchModel),
-          },
-          mapping: selectConfiguration.mapping,
-        }),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (res.status === 200) {
-        setOptions(await res.json());
-      } else {
-        setLoadingError(res.statusText + ', code:  ' + res.status);
+      if (requestId === requestIdRef.current) {
+        setOptions(loadedOptions);
+        setLoadingError(undefined);
       }
     } catch (err) {
-      setLoadingError((err as any)?.message || err?.toString());
+      if (requestId === requestIdRef.current) {
+        setLoadingError((err as any)?.message || err?.toString());
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }
 
@@ -171,10 +177,8 @@ function SearchableRemoteSelectComponent(attrs: any) {
 
   function writeMultiModel(value?: SearchableRemoteSelectValue[]): void {
     // For type: 'json', store actual array (no stringify)
-    const valuesArray = value ? value.map(v => String(v.value).trim()) : [];
-    const finalValue = valuesArray.length
-      ? valuesArray
-      : required ? undefined : [];
+    const valuesArray = value ? value.map((v) => String(v.value).trim()) : [];
+    const finalValue = valuesArray.length ? valuesArray : required ? undefined : [];
 
     onChange({
       target: {
@@ -187,7 +191,7 @@ function SearchableRemoteSelectComponent(attrs: any) {
 
   function writeSingleModel(value?: SearchableRemoteSelectValue): void {
     // For type: 'text', store plain string
-    const finalValue = value ? String(value.value).trim() : (required ? undefined : null);
+    const finalValue = value ? String(value.value).trim() : required ? undefined : null;
 
     onChange({
       target: {
