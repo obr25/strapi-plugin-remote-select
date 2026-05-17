@@ -1,5 +1,5 @@
 {
-  "version": "3.0.0",
+  "version": "3.1.0",
   "keywords": [
     "strapi select",
     "strapi multi selects",
@@ -79,6 +79,6 @@
     "url": "https://github.com/dmitriy-nz/strapi-plugin-remote-select.git"
   },
   "engines": {
-    "node": ">=18.0.0 <=20.x.x"
+    "node": ">=18.0.0 <=22.x.x"
   }
 }

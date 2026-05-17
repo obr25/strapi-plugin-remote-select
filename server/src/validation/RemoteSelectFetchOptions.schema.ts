@@ -6,10 +6,10 @@ export const RemoteSelectFetchOptionsSchema = yup.object().shape({
     method: yup.string().oneOf(['GET', 'POST', 'PUT']).required(),
     headers: yup.string().optional(),
     body: yup.string().optional(),
-  }),
-  mapping: yup.object().shape({
-    sourceJsonPath: yup.string().required(),
+  }).required(),
+  mapping: yup.object().optional().shape({
+    sourceJsonPath: yup.string().optional(),
     valueJsonPath: yup.string().optional(),
     labelJsonPath: yup.string().optional(),
-  }),
+  }).nullable(),
 });
