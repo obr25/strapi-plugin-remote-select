@@ -7,6 +7,7 @@ import {
   SingleSelectOption,
   useDesignSystem,
 } from '@strapi/design-system';
+import type { MouseEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import { useTheme } from 'styled-components';
@@ -91,7 +92,7 @@ function RemoteSelectComponent({
     }
   }
 
-  function handleChange(value?: string | string[]) {
+  function handleChange(value?: string | string[] | number) {
     let finalValue: any;
 
     if (isMulti) {
@@ -109,7 +110,7 @@ function RemoteSelectComponent({
     });
   }
 
-  function clear(event: PointerEvent) {
+  function clear(event: MouseEvent<HTMLButtonElement | HTMLDivElement>) {
     event.stopPropagation();
     event.preventDefault();
     handleChange(undefined);
@@ -127,28 +128,43 @@ function RemoteSelectComponent({
     );
   });
 
-  const SelectToRender = isMulti ? MultiSelect : SingleSelect;
-
   return (
     <Field.Root name={name} hint={hint} required={required} error={error}>
       <Field.Label>{label}</Field.Label>
-      <SelectToRender
-        withTags={isMulti}
-        placeholder={placeholder || formatMessage(defaultPlaceholder)}
-        aria-label={label}
-        name={name}
-        onChange={handleChange}
-        value={valueParsed}
-        disabled={disabled}
-        error={error}
-        required={required}
-        onClear={clear}
-        loading={isLoading ?? true}
-      >
-        {optionsLoadingError &&
-          `Options loading error: ${optionsLoadingError}. Please check the field configuration`}
-        {optionsList}
-      </SelectToRender>
+      {isMulti ? (
+        <MultiSelect
+          withTags
+          placeholder={placeholder || formatMessage(defaultPlaceholder)}
+          aria-label={label}
+          name={name}
+          onChange={handleChange}
+          value={Array.isArray(valueParsed) ? valueParsed : []}
+          disabled={disabled}
+          required={required}
+          onClear={clear}
+          loading={isLoading ?? true}
+        >
+          {optionsLoadingError &&
+            `Options loading error: ${optionsLoadingError}. Please check the field configuration`}
+          {optionsList}
+        </MultiSelect>
+      ) : (
+        <SingleSelect
+          placeholder={placeholder || formatMessage(defaultPlaceholder)}
+          aria-label={label}
+          name={name}
+          onChange={handleChange}
+          value={typeof valueParsed === 'string' ? valueParsed : ''}
+          disabled={disabled}
+          required={required}
+          onClear={clear}
+          loading={isLoading ?? true}
+        >
+          {optionsLoadingError &&
+            `Options loading error: ${optionsLoadingError}. Please check the field configuration`}
+          {optionsList}
+        </SingleSelect>
+      )}
       <Field.Error />
       <Field.Hint />
     </Field.Root>

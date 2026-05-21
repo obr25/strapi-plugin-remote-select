@@ -9,6 +9,7 @@ import {
   useDesignSystem,
 } from '@strapi/design-system';
 import { Cross } from '@strapi/icons';
+import type { MouseEvent } from 'react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import { useTheme } from 'styled-components';
@@ -202,7 +203,7 @@ function SearchableRemoteSelectComponent(attrs: any) {
     });
   }
 
-  function clear(event: PointerEvent): void {
+  function clear(event: MouseEvent<HTMLButtonElement | HTMLDivElement>): void {
     event.stopPropagation();
     event.preventDefault();
     if (!isMulti) {
@@ -230,7 +231,6 @@ function SearchableRemoteSelectComponent(attrs: any) {
           {valueParsed.map((option) => (
             <Tag
               key={option.value}
-              type="button"
               icon={<Cross aria-hidden />}
               onClick={() => removeFromModel(option)}
             >
@@ -251,7 +251,6 @@ function SearchableRemoteSelectComponent(attrs: any) {
         allowCustomValue
         autocomplete="none"
         id={generatedId}
-        error={error}
         loading={isLoading}
         placeholder={formatMessage({
           id: 'remote-select.searchable-select.placeholder',
