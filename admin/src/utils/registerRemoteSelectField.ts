@@ -11,6 +11,7 @@ interface RegisterRemoteSelectFieldOptions {
   name: string;
   type: 'text' | 'json';
   selectType: SelectType;
+  isMulti?: boolean;
   labelId: string;
   labelDefaultMessage: string;
   descriptionDefaultMessage: string;
@@ -23,6 +24,7 @@ export function registerRemoteSelectField({
   name,
   type,
   selectType,
+  isMulti = false,
   labelId,
   labelDefaultMessage,
   descriptionDefaultMessage,
@@ -45,6 +47,6 @@ export function registerRemoteSelectField({
     components: {
       Input: input,
     },
-    options: getRemoteSelectRegisterOptions(selectType),
+    options: getRemoteSelectRegisterOptions(selectType, isMulti),
   });
 }

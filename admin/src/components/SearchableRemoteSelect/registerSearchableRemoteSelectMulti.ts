@@ -8,6 +8,7 @@ export function registerSearchableRemoteSelectMulti(app: StrapiApp): void {
     name: 'searchable-remote-select-multi',
     type: 'json',
     selectType: 'searchable',
+    isMulti: true,
     labelId: 'searchable-remote-select-multi.label',
     labelDefaultMessage: 'Searchable remote select (Multi)',
     descriptionDefaultMessage: 'Select multiple options from the remote source with search support',

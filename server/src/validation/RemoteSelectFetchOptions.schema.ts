@@ -1,6 +1,7 @@
-import * as yup from 'yup';
+import { yup } from '@strapi/utils';
 
-export const RemoteSelectFetchOptionsSchema = yup.object().shape({
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const RemoteSelectFetchOptionsSchema: any = yup.object().shape({
   fetch: yup.object().shape({
     url: yup.string().required(),
     method: yup.string().optional(),

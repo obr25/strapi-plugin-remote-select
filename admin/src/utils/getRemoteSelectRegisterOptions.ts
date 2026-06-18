@@ -13,7 +13,7 @@ const translationsOptions: Record<string, Record<SelectType, MessageDescriptor>>
     },
     searchable: {
       id: getTrad('basic.searchable-source-url-note'),
-      defaultMessage: 'The string "{q}" in the url will be replaced with the search phrase',
+      defaultMessage: 'The string "{{q}}" in the url will be replaced with the search phrase',
     },
   },
   fetchBodyDescription: {
@@ -24,7 +24,7 @@ const translationsOptions: Record<string, Record<SelectType, MessageDescriptor>>
     searchable: {
       id: getTrad('basic.searchable-fetch-body-note'),
       defaultMessage:
-        'Fetch options request body. The string "{q}" in the url will be replaced with the search phrase',
+        'Fetch options request body. The string "{{q}}" in the url will be replaced with the search phrase',
     },
   },
   multiModeDescription: {
